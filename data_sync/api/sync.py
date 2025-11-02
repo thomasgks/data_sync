@@ -124,6 +124,53 @@ def sync_sales_invoice():
         return {"status_code": "0", "error": str(e)}
 
 
+@frappe.whitelist(allow_guest=True)
+def sync_payment_entry():
+    try:
+        data = frappe.request.get_json()
+        doctype = data.get("doctype")
+        docname = data.get("name")
+
+        if doctype != "Payment Entry":
+            return {"error": "This endpoint only accepts Payment Entry"}
+        
+        party_type = data.get("party_type")
+        if party_type != "Customer":
+            return {"error": "Payment Entry accept only against Customer"}
+        
+        customer_name = data.get("party")
+        if not customer_name:
+            return {"error": "Payment Entry must include customer"}
+
+        customer = frappe.get_doc("Customer", customer_name)
+
+        if not customer.get("custom_sync"):
+            return {"skipped": True, "reason": "Customer.custom_sync is not true"}
+
+        if frappe.db.exists("Payment Entry", {"custom_sync_ref_no": docname}):
+            existing_docname = frappe.db.get_value("Payment Entry", {"custom_sync_ref_no": docname}, "name")
+            return {
+                "status_code": "2",
+                "status": "Already Exists",
+                "doctype": "Payment Entry",
+                "name": existing_docname
+            }
+        else:
+            doc = frappe.new_doc("Payment Entry")
+            doc.update(data)
+            doc.insert()
+            return {
+                "status_code": "1",
+                "status": "created",
+                "doctype": "Payment Entry",
+                "name": doc.name
+            }
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "sync_payment_entry failed")
+        return {"status_code": "0", "error": str(e)}
+
+
 @frappe.whitelist(allow_guest=False)
 def create_or_update_address_and_contact_api():
     try:
